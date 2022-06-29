@@ -3,6 +3,22 @@ $(function () {
   var layer = layui.layer;
   var form = layui.form;
 
+  // 根据本地localStorage是否有数据，判断当前为新增模式还是修改模式
+  // 如果为修改模式，重新渲染表单，
+  var data = JSON.parse(localStorage.getItem("data")) || null;
+  // var imgUrlStr = data.cover_img.split("_")[1];
+  // var imgUrl =
+  //   "blob:http://localhost/" +
+  //   imgUrlStr.substring(0, 8) +
+  //   "-" +
+  //   imgUrlStr.substring(8, 12) +
+  //   "-" +
+  //   imgUrlStr.substring(12, 16) +
+  //   "-" +
+  //   imgUrlStr.substring(16, 20) +
+  //   "-" +
+  //   imgUrlStr.substring(20);
+
   initCate();
   // 初始化富文本编辑器
   initEditor();
@@ -20,8 +36,13 @@ $(function () {
         // 调用模版引擎，渲染分类的下拉菜单
         var htmlStr = template("tpl-cate", res);
         $("[name=cate_id]").html(htmlStr);
-        // 一定要调用 form.render() 方法
 
+        // 表示处于修改模式，当前分类加载完毕，填充数据
+        if (data !== null) {
+          $("[name=cate_id]").val(data.cate_id);
+        }
+
+        // 一定要调用 form.render() 方法
         form.render();
       },
     });
@@ -39,21 +60,20 @@ $(function () {
   // 3. 初始化裁剪区域
   $image.cropper(options);
 
-  // 根据本地localStorage是否有数据，判断当前为新增模式还是修改模式
-  // 如果为修改模式，重新渲染表单，
-  var data = JSON.parse(localStorage.getItem("data")) || null;
-  console.log(data);
+  // 处于处于修改模式 填充文章标题和内容
   if (data !== null) {
-    // 先给标题 文章内容赋值
     form.val("form-pub", data);
-    // 给文章类别赋值
-    console.log($("[name=cate_id]"));
-    console.log(data.cate_id);
-    var t = $("[name=cate_id]").find("option[lay-value=" + data.cate_id + "]");
-    console.log($("[name=cate_id]").find("option[lay-value='2']")[0]);
-  }
-  // var info = localStorage.getItem('')
+    console.log(data);
+    // 获取图片的地址
+    var rootPath = "http://www.liulongbin.top:3007";
+    var imgUrl = rootPath + data.cover_img;
+    // 格式化字符串为需要的blob形式
 
+    $image
+      .cropper("destroy") // 销毁旧的裁剪区域
+      .attr("src", imgUrl) // 重新设置图片路径
+      .cropper(options); // 重新初始化裁剪区域
+  }
   // 为选择封面的点击按钮绑定点击事件的处理函数
   $("#btnChooseImage").on("click", function () {
     $("#coverFile").click();
@@ -69,6 +89,7 @@ $(function () {
     }
     // 根据选择的文件，创建一个对应的 URL 地址：
     var newImgURL = URL.createObjectURL(files[0]);
+    console.log(newImgURL);
     // 为裁剪区域重新设置图片
     $image
       .cropper("destroy") // 销毁旧的裁剪区域
@@ -104,10 +125,42 @@ $(function () {
         // 得到文件对象后，进行后续的操作
         // 将文件对象存储在fd中
         fd.append("cover_img", blob);
-        // 发起 ajax 请求
-        publishArticle(fd);
+        // 如果是编辑模式，发起更新ajax请求，否则发起发布文章请求
+        if (data !== null) {
+          fd.append("Id", data.Id);
+          updateArticle(fd);
+        } else {
+          publishArticle(fd);
+        }
       });
   });
+
+  function updateArticle(fd) {
+    $.ajax({
+      method: "post",
+      url: "/my/article/edit",
+      data: fd,
+      // 注意：如果向服务器提交的是 FormData 格式的数据
+      // 必须添加以下两个配置项
+      processData: false,
+      contentType: false,
+      success: function (res) {
+        if (res.status !== 0) {
+          return layer.msg("更新文章失败！");
+        }
+        layer.msg("更新文章成功！");
+        localStorage.removeItem("data");
+        // 发布成功 跳转到文章列表页
+        location.href = "/article/art_list.html";
+        // 将文章列表的样式设为选中
+        var art_manage = window.parent.document.getElementById("art_manage");
+        $(art_manage)
+          .addClass("layui-this")
+          .siblings()
+          .removeClass("layui-this");
+      },
+    });
+  }
 
   function publishArticle(fd) {
     $.ajax({
